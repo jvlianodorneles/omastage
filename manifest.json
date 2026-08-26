@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "debba.stage-manager",
+  "name": "Stage Manager",
+  "version": "0.3.1",
+  "author": "debba",
+  "license": "MIT",
+  "description": "A compact macOS-inspired stage with live windows from every Hyprland workspace on the focused monitor.",
+  "kinds": [
+    "bar-widget",
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "Widget.qml",
+    "overlay": "StageManager.qml"
+  },
+  "barWidget": {
+    "displayName": "Stage Manager",
+    "description": "Reserve a compact stage for live, application-grouped windows on the focused monitor.",
+    "category": "Compositor",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
