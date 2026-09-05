@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PLUGIN_ID="debba.stage-manager"
+PLUGIN_ID="dorneles.omastage"
 PLUGIN_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/$PLUGIN_ID"
 BINDINGS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/bindings.lua"
@@ -12,7 +12,7 @@ fi
 
 if [[ -f "$BINDINGS_FILE" ]] && grep -Fq -- "-- >>> $PLUGIN_ID >>>" "$BINDINGS_FILE"; then
   cp -- "$BINDINGS_FILE" "$BINDINGS_FILE.bak.$(date +%s)"
-  python - "$BINDINGS_FILE" "$PLUGIN_ID" <<'PY'
+  python3 - "$BINDINGS_FILE" "$PLUGIN_ID" <<'PY'
 from pathlib import Path
 import sys
 

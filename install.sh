@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PLUGIN_ID="debba.stage-manager"
+PLUGIN_ID="dorneles.omastage"
 PLUGIN_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/$PLUGIN_ID"
 BINDINGS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/bindings.lua"
@@ -38,29 +38,46 @@ omarchy plugin enable "$PLUGIN_ID" --section right
 mkdir -p -- "$(dirname -- "$BINDINGS_FILE")"
 touch "$BINDINGS_FILE"
 if ! grep -Fq -- "$START_MARKER" "$BINDINGS_FILE"; then
-  if omarchy menu keybindings --print 2>/dev/null | awk -F '→' '
-    {
-      key = $1
-      sub(/[[:space:]]+$/, "", key)
-      if (key == "SUPER + GRAVE") found = 1
-    }
-    END { exit found ? 0 : 1 }
-  '; then
-    echo "install.sh: SUPER+GRAVE is already assigned; shortcut was not installed" >&2
-  else
-    cp -- "$BINDINGS_FILE" "$BINDINGS_FILE.bak.$(date +%s)"
-    cat >>"$BINDINGS_FILE" <<'LUA'
+  # Remove any legacy binding if present
+  if grep -Fq -- "-- >>> debba.stage-manager >>>" "$BINDINGS_FILE"; then
+    python3 - "$BINDINGS_FILE" "debba.stage-manager" <<'PY'
+from pathlib import Path
+import sys
 
--- >>> debba.stage-manager >>>
--- SUPER+TAB remains Omarchy's "Next workspace" shortcut.
-o.bind("SUPER + GRAVE", "Stage Manager", "omarchy-shell shell toggle debba.stage-manager '{}'")
--- <<< debba.stage-manager <<<
+path = Path(sys.argv[1])
+plugin_id = sys.argv[2]
+start = f"-- >>> {plugin_id} >>>"
+end = f"-- <<< {plugin_id} <<<"
+lines = path.read_text().splitlines(keepends=True)
+out = []
+skipping = False
+for line in lines:
+    if line.rstrip("\n") == start:
+        skipping = True
+        if out and out[-1].strip() == "":
+            out.pop()
+        continue
+    if skipping and line.rstrip("\n") == end:
+        skipping = False
+        continue
+    if not skipping:
+        out.append(line)
+path.write_text("".join(out))
+PY
+  fi
+
+  cp -- "$BINDINGS_FILE" "$BINDINGS_FILE.bak.$(date +%s)"
+  cat >>"$BINDINGS_FILE" <<'LUA'
+
+-- >>> dorneles.omastage >>>
+o.bind("CTRL + TAB", "OmaStage", "omarchy-shell shell toggle dorneles.omastage '{}'")
+hl.layer_rule({ match = { namespace = "omastage" }, blur = true })
+-- <<< dorneles.omastage <<<
 LUA
-    hyprctl reload
-    if errors=$(hyprctl configerrors) && [[ -n "$errors" ]]; then
-      printf '%s\n' "$errors" >&2
-      exit 1
-    fi
+  hyprctl reload
+  if errors=$(hyprctl configerrors) && [[ -n "$errors" ]]; then
+    printf '%s\n' "$errors" >&2
+    exit 1
   fi
 fi
 
@@ -75,5 +92,5 @@ for _ in {1..50}; do
 done
 omarchy-shell shell ping >/dev/null
 
-printf 'Installed %s\n  source: %s\n  link:   %s\n  toggle: SUPER+GRAVE\n' \
+printf 'Installed %s\n  source: %s\n  link:   %s\n  toggle: CTRL+TAB\n' \
   "$PLUGIN_ID" "$PLUGIN_DIR" "$INSTALL_DIR"

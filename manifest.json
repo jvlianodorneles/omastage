@@ -1,11 +1,20 @@
 {
   "schemaVersion": 1,
-  "id": "debba.stage-manager",
-  "name": "Stage Manager",
-  "version": "0.3.1",
-  "author": "debba",
+  "id": "dorneles.omastage",
+  "name": "OmaStage",
+  "version": "1.0.0",
+  "author": "Dorneles",
   "license": "MIT",
-  "description": "A compact macOS-inspired stage with live windows from every Hyprland workspace on the focused monitor.",
+  "description": "A compact macOS-inspired stage manager for Omarchy with live window thumbnails from Hyprland workspaces on the focused monitor.",
+  "keywords": [
+    "stage-manager",
+    "omastage",
+    "stage",
+    "window-switcher",
+    "hyprland",
+    "quickshell",
+    "omarchy"
+  ],
   "kinds": [
     "bar-widget",
     "overlay"
@@ -16,8 +25,8 @@
     "overlay": "StageManager.qml"
   },
   "barWidget": {
-    "displayName": "Stage Manager",
-    "description": "Reserve a compact stage for live, application-grouped windows on the focused monitor.",
+    "displayName": "OmaStage",
+    "description": "macOS-inspired Stage Manager with live thumbnails on the focused monitor.",
     "category": "Compositor",
     "allowMultiple": false,
     "defaultSection": "right"
