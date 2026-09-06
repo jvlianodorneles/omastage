@@ -265,7 +265,20 @@ Item {
     }
   }
 
+  Timer {
+    id: closeTimer
+    interval: 280
+    repeat: false
+    onTriggered: {
+      root.opened = false
+      if (root.shell && typeof root.shell.hide === "function" && typeof root.shell.isPluginOpen === "function" && root.shell.isPluginOpen("dorneles.omastage")) {
+        root.shell.hide("dorneles.omastage")
+      }
+    }
+  }
+
   function open(payloadJson) {
+    closeTimer.stop()
     var monitor = Hyprland.focusedMonitor
     root.targetMonitorId = monitor ? Number(monitor.id) : 0
     root.targetMonitorName = monitor ? String(monitor.name || "") : ""
@@ -284,25 +297,26 @@ Item {
   }
 
   function close() {
+    if (!root.opened && !root.revealed && !closeTimer.running) return
     focusPrimeTimer.stop()
     root.focusPrimed = false
     root.revealed = false
-    root.opened = false
     root.keyboardNavActive = false
+    closeTimer.restart()
   }
 
   function toggle() {
-    if (root.opened) root.close()
+    if (root.opened && root.revealed && !closeTimer.running) root.close()
     else root.open("{}")
   }
 
   function status(arg) {
     return JSON.stringify({
-      opened: root.opened,
+      opened: root.opened && root.revealed,
       monitor: root.targetMonitorName,
       groups: root.groups.length,
       windows: root.flatWindows.length,
-      reservedWidth: root.opened ? panel.implicitWidth : 0
+      reservedWidth: (root.opened && root.revealed && panel.exclusionMode !== ExclusionMode.Ignore) ? panel.implicitWidth : 0
     })
   }
 
@@ -348,13 +362,11 @@ Item {
 
   function activate(record) {
     if (!record) return
-    var wayland = record.wayland
-    var address = record.address
+    var address = String(record.address || "")
+    if (!/^0x[0-9a-fA-F]+$/.test(address)) return
     root.close()
-    if (root.shell && typeof root.shell.hide === "function") root.shell.hide("dorneles.omastage")
     Qt.callLater(function() {
-      if (wayland && typeof wayland.activate === "function") wayland.activate()
-      else Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + address])
+      Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + address])
     })
   }
 
@@ -377,12 +389,14 @@ Item {
     id: rebuildTimer
     interval: 80
     repeat: false
-    onTriggered: if (root.opened) root.rebuild(false)
+    onTriggered: if (root.opened && root.revealed) root.rebuild(false)
   }
 
   Connections {
     target: Hyprland.toplevels
-    function onValuesChanged() { rebuildTimer.restart() }
+    function onValuesChanged() {
+      if (root.opened && root.revealed) rebuildTimer.restart()
+    }
   }
 
   Connections {
@@ -392,14 +406,14 @@ Item {
         "openwindow", "closewindow", "movewindow", "movewindowv2",
         "workspace", "workspacev2", "focusedmon", "changefloatingmode"
       ]
-      if (root.opened && structural.indexOf(event.name) !== -1) rebuildTimer.restart()
+      if (root.opened && root.revealed && structural.indexOf(event.name) !== -1) rebuildTimer.restart()
     }
   }
 
   HyprlandFocusGrab {
-    active: root.opened
+    active: root.opened && root.revealed
     windows: panel.visible ? [panel] : []
-    onCleared: if (root.opened) root.close()
+    onCleared: if (root.opened && root.revealed) root.close()
   }
 
   PanelWindow {
@@ -409,7 +423,7 @@ Item {
     screen: root.targetScreen
     color: "transparent"
     implicitWidth: root.railWidth + root.panelGap * 2
-    exclusionMode: ExclusionMode.Auto
+    exclusionMode: ExclusionMode.Ignore
     surfaceFormat.opaque: false
 
     anchors {
@@ -420,7 +434,7 @@ Item {
 
     WlrLayershell.namespace: "omastage"
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: root.opened
+    WlrLayershell.keyboardFocus: (root.opened && root.revealed)
       ? (root.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
       : WlrKeyboardFocus.None
 
@@ -484,7 +498,7 @@ Item {
       }
 
       Behavior on opacity {
-        NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
       }
     }
 
@@ -506,7 +520,7 @@ Item {
       }
 
       Behavior on opacity {
-        NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
       }
     }
 
@@ -514,18 +528,18 @@ Item {
 
     Item {
       id: stageRail
-      x: root.revealed ? root.panelGap : -Style.space(32)
+      x: root.revealed ? root.panelGap : -Math.round(root.railWidth * 0.35)
       y: 0
       width: root.railWidth
       height: panel.height
       opacity: root.revealed ? 1 : 0
 
       Behavior on x {
-        NumberAnimation { duration: 270; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
       }
 
       Behavior on opacity {
-        NumberAnimation { duration: 190; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
       }
 
       // Close button (Top Right)
@@ -551,13 +565,14 @@ Item {
           ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.32)
           : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16)
 
-        Behavior on opacity { NumberAnimation { duration: 130 } }
-        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-        Behavior on color { ColorAnimation { duration: 100 } }
-        Behavior on border.color { ColorAnimation { duration: 100 } }
+        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 180 } }
+        Behavior on border.color { ColorAnimation { duration: 180 } }
 
         Text {
           anchors.centerIn: parent
+          textFormat: Text.PlainText
           text: "✕"
           color: root.foreground
           opacity: 0.82
@@ -588,6 +603,10 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
 
+        Behavior on contentY {
+          NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
+        }
+
         Column {
           id: groupsColumn
           y: Math.max(0, (appFlick.height - implicitHeight) / 2)
@@ -616,20 +635,22 @@ Item {
         height: Style.space(18)
         opacity: (root.keyboardNavActive || panelHover.hovered) && root.flatWindows.length > 0 ? 0.70 : 0
 
-        Behavior on opacity { NumberAnimation { duration: 200 } }
+        Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
         Row {
           anchors.centerIn: parent
           spacing: Style.space(4)
 
           Text {
-            text: "↑↓ Navegar"
+            textFormat: Text.PlainText
+            text: "↑↓ Navigate"
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.space(8.5)
             opacity: 0.75
           }
           Text {
+            textFormat: Text.PlainText
             text: "•"
             color: root.foreground
             font.family: root.fontFamily
@@ -637,13 +658,15 @@ Item {
             opacity: 0.4
           }
           Text {
-            text: "←→ Janela"
+            textFormat: Text.PlainText
+            text: "←→ Window"
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.space(8.5)
             opacity: 0.75
           }
           Text {
+            textFormat: Text.PlainText
             text: "•"
             color: root.foreground
             font.family: root.fontFamily
@@ -651,13 +674,15 @@ Item {
             opacity: 0.4
           }
           Text {
-            text: "↵ Focar"
+            textFormat: Text.PlainText
+            text: "↵ Focus"
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.space(8.5)
             opacity: 0.75
           }
           Text {
+            textFormat: Text.PlainText
             text: "•"
             color: root.foreground
             font.family: root.fontFamily
@@ -665,7 +690,8 @@ Item {
             opacity: 0.4
           }
           Text {
-            text: "Esc Fechar"
+            textFormat: Text.PlainText
+            text: "Esc Close"
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.space(8.5)
@@ -691,6 +717,7 @@ Item {
 
           Text {
             anchors.centerIn: parent
+            textFormat: Text.PlainText
             text: "󰕰"
             color: root.foreground
             opacity: 0.52
@@ -705,7 +732,8 @@ Item {
 
           Text {
             width: parent.width
-            text: "Nenhuma janela"
+            textFormat: Text.PlainText
+            text: "No Windows"
             color: root.foreground
             opacity: 0.82
             font.family: root.fontFamily
@@ -716,7 +744,8 @@ Item {
 
           Text {
             width: parent.width
-            text: "Sem outras janelas em segundo plano"
+            textFormat: Text.PlainText
+            text: "No background windows on this stage"
             color: root.foreground
             opacity: 0.48
             font.family: root.fontFamily
@@ -821,7 +850,7 @@ Item {
     scale: hovered ? 1.025 : 1
 
     Behavior on scale {
-      NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+      NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
     }
 
     onGroupDataChanged: syncSelection()
@@ -859,7 +888,7 @@ Item {
         height: appGroup.cardHeight + appGroup.stackDepth * appGroup.stackOffsetY
 
         Behavior on height {
-          NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+          NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
         }
 
         Repeater {
@@ -876,10 +905,10 @@ Item {
             layerIndex: index
             groupHovered: appGroup.hovered
 
-            Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-            Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-            Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Behavior on x { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+            Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+            Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
           }
         }
 
@@ -895,8 +924,8 @@ Item {
           onHovered: if (appGroup.currentRecord) root.selectedAddress = appGroup.currentRecord.address
           onActivated: if (appGroup.currentRecord) root.activate(appGroup.currentRecord)
 
-          Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-          Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+          Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+          Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
         }
       }
 
@@ -934,6 +963,7 @@ Item {
           Text {
             id: badgeText
             anchors.centerIn: parent
+            textFormat: Text.PlainText
             text: appGroup.windowCount
             color: root.background
             font.family: root.fontFamily
@@ -959,6 +989,7 @@ Item {
           anchors.right: windowSelectors.visible ? windowSelectors.left : parent.right
           anchors.rightMargin: windowSelectors.visible ? Style.space(4) : 0
           anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
           text: {
             if (!appGroup.groupData) return ""
             if (appGroup.hovered && appGroup.currentRecord) {
@@ -976,7 +1007,7 @@ Item {
           font.bold: appGroup.selected || appGroup.hovered
           elide: Text.ElideRight
 
-          Behavior on opacity { NumberAnimation { duration: 130 } }
+          Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
         }
 
         Row {
@@ -1011,12 +1042,13 @@ Item {
                 ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.22)
                 : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
 
-              Behavior on scale { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
-              Behavior on color { ColorAnimation { duration: 120 } }
+              Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+              Behavior on color { ColorAnimation { duration: 180 } }
 
               Text {
                 id: selectorText
                 anchors.centerIn: parent
+                textFormat: Text.PlainText
                 text: appGroup.selectorLabel(selector.index)
                 color: selector.current ? root.background : root.foreground
                 opacity: selector.current ? 1 : 0.72
@@ -1052,7 +1084,16 @@ Item {
     readonly property real radius: root.cardRadius
 
     opacity: layerIndex === 0 ? (groupHovered ? 0.95 : 0.88) : (groupHovered ? 0.88 : 0.74)
-    Behavior on opacity { NumberAnimation { duration: 180 } }
+    Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+
+    Rectangle {
+      id: stackMask
+      anchors.fill: parent
+      radius: stackLayer.radius
+      color: "black"
+      visible: false
+      layer.enabled: true
+    }
 
     Item {
       id: stackVisual
@@ -1064,15 +1105,6 @@ Item {
         maskSource: stackMask
         maskThresholdMin: 0.5
         maskSpreadAtMin: 0.02
-      }
-
-      Rectangle {
-        id: stackMask
-        anchors.fill: parent
-        radius: stackLayer.radius
-        color: "black"
-        visible: false
-        layer.enabled: true
       }
 
       Rectangle {
@@ -1098,6 +1130,8 @@ Item {
         paintCursor: false
         anchors.fill: parent
         opacity: hasContent ? 0.88 : 0
+
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
       }
 
       Rectangle {
@@ -1144,6 +1178,15 @@ Item {
     signal hovered()
     signal activated()
 
+    Rectangle {
+      id: cardMask
+      anchors.fill: parent
+      radius: preview.radius
+      color: "black"
+      visible: false
+      layer.enabled: true
+    }
+
     Item {
       id: cardVisual
       anchors.fill: parent
@@ -1154,15 +1197,6 @@ Item {
         maskSource: cardMask
         maskThresholdMin: 0.5
         maskSpreadAtMin: 0.02
-      }
-
-      Rectangle {
-        id: cardMask
-        anchors.fill: parent
-        radius: preview.radius
-        color: "black"
-        visible: false
-        layer.enabled: true
       }
 
       Rectangle {
@@ -1188,12 +1222,14 @@ Item {
         paintCursor: false
         anchors.fill: parent
         opacity: hasContent ? 1 : 0
+
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
       }
 
       Rectangle {
         anchors.fill: parent
         color: preview.hoveredState ? Qt.rgba(1, 1, 1, 0.055) : "transparent"
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: 180 } }
       }
     }
 
@@ -1207,7 +1243,7 @@ Item {
         : Qt.rgba(1, 1, 1, 0.10)
       z: 15
 
-      Behavior on border.color { ColorAnimation { duration: 120 } }
+      Behavior on border.color { ColorAnimation { duration: 180 } }
     }
 
     BorderOverlay {
@@ -1220,11 +1256,11 @@ Item {
       )
       opacity: preview.keyboardFocused ? 1.0 : (preview.selected ? 0.95 : (preview.hoveredState ? 0.55 : 0.30))
 
-      Behavior on opacity { NumberAnimation { duration: 120 } }
+      Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
     }
 
     Rectangle {
-      visible: preview.keyboardFocused
+      visible: opacity > 0
       anchors.fill: parent
       anchors.margins: -Style.space(2)
       radius: preview.radius + Style.space(2)
@@ -1232,7 +1268,9 @@ Item {
       border.width: Style.space(2)
       border.color: root.accentColor
       z: 22
-      opacity: 0.85
+      opacity: preview.keyboardFocused ? 0.85 : 0
+
+      Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     }
 
     MouseArea {
