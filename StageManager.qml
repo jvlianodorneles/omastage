@@ -778,12 +778,14 @@ Item {
     readonly property real stackOffsetY: appGroup.hovered ? Style.space(7) : Style.space(4)
     readonly property real availableWidth: root.maxThumbnailWidth - appGroup.stackDepth * stackOffsetX
 
-    readonly property real currentAspect: {
-      if (mainPreview && mainPreview.captureHasContent && mainPreview.sourceWidth > 0 && mainPreview.sourceHeight > 0) {
-        return mainPreview.sourceWidth / mainPreview.sourceHeight
-      }
-      if (currentRecord && currentRecord.winWidth > 0 && currentRecord.winHeight > 0) {
-        return currentRecord.winWidth / currentRecord.winHeight
+    readonly property real groupAspect: {
+      if (groupData && groupData.windows && groupData.windows.length > 0) {
+        for (var i = 0; i < groupData.windows.length; i++) {
+          var w = groupData.windows[i]
+          if (w.winWidth > 0 && w.winHeight > 0) {
+            return w.winWidth / w.winHeight
+          }
+        }
       }
       return 16.0 / 10.0
     }
@@ -791,17 +793,17 @@ Item {
     readonly property real cardWidth: {
       var maxW = availableWidth
       var maxH = root.maxThumbnailHeight
-      if (currentAspect >= (maxW / maxH)) {
+      if (groupAspect >= (maxW / maxH)) {
         return maxW
       }
-      return Math.max(root.minThumbnailWidth, Math.min(maxW, maxH * currentAspect))
+      return Math.max(root.minThumbnailWidth, Math.min(maxW, maxH * groupAspect))
     }
 
     readonly property real cardHeight: {
       var maxW = availableWidth
       var maxH = root.maxThumbnailHeight
-      if (currentAspect >= (maxW / maxH)) {
-        return Math.max(root.minThumbnailHeight, Math.min(maxH, cardWidth / currentAspect))
+      if (groupAspect >= (maxW / maxH)) {
+        return Math.max(root.minThumbnailHeight, Math.min(maxH, cardWidth / groupAspect))
       }
       return maxH
     }
@@ -831,11 +833,6 @@ Item {
           return
         }
       }
-    }
-
-    function stackedRecord(layerIndex) {
-      if (!groupData || windowCount < 2) return null
-      return groupData.windows[(currentIndex + layerIndex + 1) % windowCount]
     }
 
     function selectorLabel(index) {
@@ -870,14 +867,14 @@ Item {
 
     Timer {
       id: wheelResetTimer
-      interval: 300
+      interval: 350
       repeat: false
       onTriggered: appGroup.wheelAccumulator = 0
     }
 
     Timer {
       id: wheelCooldownTimer
-      interval: 180
+      interval: 220
       repeat: false
     }
 
@@ -901,7 +898,7 @@ Item {
 
         if (wheelCooldownTimer.running) return
 
-        var threshold = 100
+        var threshold = 90
         if (appGroup.wheelAccumulator <= -threshold) {
           appGroup.wheelAccumulator = 0
           wheelCooldownTimer.restart()
@@ -925,45 +922,18 @@ Item {
         width: parent.width
         height: appGroup.cardHeight + appGroup.stackDepth * appGroup.stackOffsetY
 
-        Behavior on height {
-          NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
-        }
-
         Repeater {
-          model: appGroup.stackDepth
+          model: appGroup.groupData ? appGroup.groupData.windows : []
 
-          StackLayer {
+          AppCard {
+            id: cardItem
+            required property var modelData
             required property int index
-            x: (index + 1) * appGroup.stackOffsetX
-            y: (index + 1) * appGroup.stackOffsetY
-            width: appGroup.cardWidth
-            height: appGroup.cardHeight
-            z: index + 1
-            record: appGroup.stackedRecord(index)
-            layerIndex: index
-            groupHovered: appGroup.hovered
 
-            Behavior on x { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-            Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-            Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-            Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            record: modelData
+            cardIndex: index
+            groupRef: appGroup
           }
-        }
-
-        WindowPreview {
-          id: mainPreview
-          x: 0
-          y: 0
-          width: appGroup.cardWidth
-          height: appGroup.cardHeight
-          z: 10
-          record: appGroup.currentRecord
-          hoveredState: appGroup.hovered
-          onHovered: if (appGroup.currentRecord) root.selectedAddress = appGroup.currentRecord.address
-          onActivated: if (appGroup.currentRecord) root.activate(appGroup.currentRecord)
-
-          Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-          Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
         }
       }
 
@@ -974,7 +944,7 @@ Item {
         y: previewStack.height - Style.space(10)
         width: Math.max(Style.space(20), Math.min(Style.space(28), appGroup.cardHeight * 0.35))
         height: width
-        z: 30
+        z: 50
 
         Image {
           anchors.fill: parent
@@ -1113,113 +1083,62 @@ Item {
     }
   }
 
-  component StackLayer: Item {
-    id: stackLayer
+  component AppCard: Item {
+    id: cardItem
 
     property var record: null
-    property int layerIndex: 0
-    property bool groupHovered: false
-    readonly property real radius: root.cardRadius
+    property int cardIndex: 0
+    property var groupRef: null
 
-    opacity: layerIndex === 0 ? (groupHovered ? 0.95 : 0.88) : (groupHovered ? 0.88 : 0.74)
-    Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-
-    Rectangle {
-      id: stackMask
-      anchors.fill: parent
-      radius: stackLayer.radius
-      color: "black"
-      visible: false
-      layer.enabled: true
-    }
-
-    Item {
-      id: stackVisual
-      anchors.fill: parent
-      layer.enabled: true
-      layer.smooth: true
-      layer.effect: MultiEffect {
-        maskEnabled: true
-        maskSource: stackMask
-        maskThresholdMin: 0.5
-        maskSpreadAtMin: 0.02
-      }
-
-      Rectangle {
-        anchors.fill: parent
-        color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.96)
-      }
-
-      Image {
-        anchors.centerIn: parent
-        width: Math.min(parent.width * 0.40, parent.height * 0.50)
-        height: width
-        source: stackLayer.record ? stackLayer.record.icon : ""
-        fillMode: Image.PreserveAspectFit
-        opacity: stackCapture.hasContent ? 0 : 0.54
-        asynchronous: true
-        smooth: true
-      }
-
-      ScreencopyView {
-        id: stackCapture
-        captureSource: stackLayer.record ? stackLayer.record.wayland : null
-        live: root.opened && stackLayer.visible
-        paintCursor: false
-        anchors.fill: parent
-        opacity: hasContent ? 0.88 : 0
-
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-      }
-
-      Rectangle {
-        anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, layerIndex === 0 ? 0.12 : 0.22)
-      }
-    }
-
-    Rectangle {
-      anchors.fill: parent
-      radius: stackLayer.radius
-      color: "transparent"
-      border.width: 1
-      border.color: Qt.rgba(1, 1, 1, 0.12)
-    }
-
-    BorderOverlay {
-      anchors.fill: parent
-      radius: parent.radius
-      borderSpec: Border.withWidth(root.activeWindowBorderSpec, 1)
-      opacity: 0.35
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: if (stackLayer.record) root.activate(stackLayer.record)
-    }
-  }
-
-  component WindowPreview: Item {
-    id: preview
-
-    property var record: null
-    property bool hoveredState: false
-    readonly property bool isCurrentActive: record && record.active
+    readonly property int totalWindows: groupRef ? groupRef.windowCount : 1
+    readonly property int relPos: totalWindows > 0
+      ? (cardIndex - groupRef.currentIndex + totalWindows) % totalWindows
+      : 0
+    readonly property bool isFront: relPos === 0
+    readonly property bool isVisibleInStack: relPos <= (groupRef ? groupRef.stackDepth : 2)
     readonly property bool selected: record && root.selectedAddress === record.address
     readonly property bool keyboardFocused: root.keyboardNavActive && selected
-    readonly property bool captureHasContent: capture.hasContent
-    readonly property real sourceWidth: capture.sourceSize.width
-    readonly property real sourceHeight: capture.sourceSize.height
     readonly property real radius: root.cardRadius
-    signal hovered()
-    signal activated()
+
+    width: groupRef ? groupRef.cardWidth : 120
+    height: groupRef ? groupRef.cardHeight : 80
+
+    // Spatial positioning based on stack rank
+    readonly property real targetX: isVisibleInStack
+      ? relPos * (groupRef ? groupRef.stackOffsetX : 5)
+      : ((groupRef ? groupRef.stackDepth : 2) + 0.5) * (groupRef ? groupRef.stackOffsetX : 5)
+
+    readonly property real targetY: isVisibleInStack
+      ? relPos * (groupRef ? groupRef.stackOffsetY : 4)
+      : ((groupRef ? groupRef.stackDepth : 2) + 0.5) * (groupRef ? groupRef.stackOffsetY : 4)
+
+    readonly property real targetOpacity: {
+      if (!isVisibleInStack) return 0.0
+      if (isFront) return 1.0
+      if (relPos === 1) return (groupRef && groupRef.hovered) ? 0.95 : 0.88
+      return (groupRef && groupRef.hovered) ? 0.88 : 0.74
+    }
+
+    readonly property real targetDarkness: {
+      if (isFront) return (groupRef && groupRef.hovered) ? 0.0 : 0.03
+      if (relPos === 1) return 0.12
+      return 0.22
+    }
+
+    x: targetX
+    y: targetY
+    opacity: targetOpacity
+    z: isFront ? 30 : Math.max(1, 20 - relPos)
+    visible: opacity > 0.01
+
+    Behavior on x { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+    Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+    Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
     Rectangle {
       id: cardMask
       anchors.fill: parent
-      radius: preview.radius
+      radius: cardItem.radius
       color: "black"
       visible: false
       layer.enabled: true
@@ -1246,17 +1165,17 @@ Item {
         anchors.centerIn: parent
         width: Math.min(parent.width * 0.40, parent.height * 0.50)
         height: width
-        source: preview.record ? preview.record.icon : ""
+        source: cardItem.record ? cardItem.record.icon : ""
         fillMode: Image.PreserveAspectFit
-        opacity: capture.hasContent ? 0 : 0.65
+        opacity: capture.hasContent ? 0 : (cardItem.isFront ? 0.65 : 0.45)
         asynchronous: true
         smooth: true
       }
 
       ScreencopyView {
         id: capture
-        captureSource: preview.record ? preview.record.wayland : null
-        live: root.opened && preview.visible
+        captureSource: cardItem.record ? cardItem.record.wayland : null
+        live: root.opened && cardItem.visible && cardItem.opacity > 0.05
         paintCursor: false
         anchors.fill: parent
         opacity: hasContent ? 1 : 0
@@ -1264,19 +1183,28 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
       }
 
+      // Stack depth / dimming overlay
       Rectangle {
         anchors.fill: parent
-        color: preview.hoveredState ? Qt.rgba(1, 1, 1, 0.055) : "transparent"
+        color: Qt.rgba(0, 0, 0, cardItem.targetDarkness)
+        Behavior on color { ColorAnimation { duration: 240 } }
+      }
+
+      // Hover tint on front card
+      Rectangle {
+        anchors.fill: parent
+        color: cardItem.isFront && groupRef && groupRef.hovered ? Qt.rgba(1, 1, 1, 0.055) : "transparent"
         Behavior on color { ColorAnimation { duration: 180 } }
       }
     }
 
+    // Outer border
     Rectangle {
       anchors.fill: parent
-      radius: preview.radius
+      radius: cardItem.radius
       color: "transparent"
       border.width: 1
-      border.color: preview.selected || preview.hoveredState
+      border.color: cardItem.selected || (cardItem.isFront && groupRef && groupRef.hovered)
         ? Qt.rgba(1, 1, 1, 0.22)
         : Qt.rgba(1, 1, 1, 0.10)
       z: 15
@@ -1284,29 +1212,31 @@ Item {
       Behavior on border.color { ColorAnimation { duration: 180 } }
     }
 
+    // Active window / accent overlay border
     BorderOverlay {
       anchors.fill: parent
       z: 20
-      radius: parent.radius
+      radius: cardItem.radius
       borderSpec: Border.withWidth(
         root.activeWindowBorderSpec,
-        preview.selected ? Style.space(2) : 1
+        cardItem.selected ? Style.space(2) : 1
       )
-      opacity: preview.keyboardFocused ? 1.0 : (preview.selected ? 0.95 : (preview.hoveredState ? 0.55 : 0.30))
+      opacity: cardItem.keyboardFocused ? 1.0 : (cardItem.selected ? 0.95 : (cardItem.isFront && groupRef && groupRef.hovered ? 0.55 : 0.25))
 
       Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
     }
 
+    // Keyboard focus ring
     Rectangle {
       visible: opacity > 0
       anchors.fill: parent
       anchors.margins: -Style.space(2)
-      radius: preview.radius + Style.space(2)
+      radius: cardItem.radius + Style.space(2)
       color: "transparent"
       border.width: Style.space(2)
       border.color: root.accentColor
       z: 22
-      opacity: preview.keyboardFocused ? 0.85 : 0
+      opacity: cardItem.keyboardFocused ? 0.85 : 0
 
       Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     }
@@ -1318,9 +1248,17 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onEntered: {
         root.keyboardNavActive = false
-        preview.hovered()
+        if (cardItem.isFront && cardItem.record) {
+          root.selectedAddress = cardItem.record.address
+        }
       }
-      onClicked: preview.activated()
+      onClicked: {
+        if (!cardItem.record) return
+        if (groupRef) {
+          groupRef.selectWindow(cardItem.cardIndex)
+        }
+        root.activate(cardItem.record)
+      }
     }
   }
 }
