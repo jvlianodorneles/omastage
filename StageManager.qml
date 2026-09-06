@@ -866,15 +866,49 @@ Item {
 
     HoverHandler { id: groupHover }
 
-    // Scroll wheel handler to cycle through windows of this application
+    property real wheelAccumulator: 0
+
+    Timer {
+      id: wheelResetTimer
+      interval: 300
+      repeat: false
+      onTriggered: appGroup.wheelAccumulator = 0
+    }
+
+    Timer {
+      id: wheelCooldownTimer
+      interval: 180
+      repeat: false
+    }
+
+    // Scroll wheel & touchpad handler with accumulation and cooldown for smooth card cycling
     WheelHandler {
       id: groupWheel
       acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
       onWheel: function(event) {
         if (appGroup.windowCount <= 1) return
-        if (event.angleDelta.y < 0) {
+
+        var dy = event.angleDelta.y
+        if (dy === 0) return
+
+        // Reset accumulation if scrolling direction is reversed
+        if ((dy > 0 && appGroup.wheelAccumulator < 0) || (dy < 0 && appGroup.wheelAccumulator > 0)) {
+          appGroup.wheelAccumulator = 0
+        }
+
+        appGroup.wheelAccumulator += dy
+        wheelResetTimer.restart()
+
+        if (wheelCooldownTimer.running) return
+
+        var threshold = 100
+        if (appGroup.wheelAccumulator <= -threshold) {
+          appGroup.wheelAccumulator = 0
+          wheelCooldownTimer.restart()
           appGroup.selectWindow((appGroup.currentIndex + 1) % appGroup.windowCount)
-        } else if (event.angleDelta.y > 0) {
+        } else if (appGroup.wheelAccumulator >= threshold) {
+          appGroup.wheelAccumulator = 0
+          wheelCooldownTimer.restart()
           appGroup.selectWindow((appGroup.currentIndex - 1 + appGroup.windowCount) % appGroup.windowCount)
         }
       }
