@@ -362,11 +362,15 @@ Item {
 
   function activate(record) {
     if (!record) return
+    var wayland = record.wayland
     var address = String(record.address || "")
-    if (!/^0x[0-9a-fA-F]+$/.test(address)) return
     root.close()
     Qt.callLater(function() {
-      Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + address])
+      if (wayland && typeof wayland.activate === "function") {
+        wayland.activate()
+      } else if (/^0x[0-9a-fA-F]+$/.test(address)) {
+        Quickshell.execDetached(["hyprctl", "eval", 'hl.dispatch(hl.dsp.exec_cmd("focuswindow address:' + address + '"))'])
+      }
     })
   }
 
