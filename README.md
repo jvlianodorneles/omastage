@@ -2,7 +2,7 @@
 
 An Omarchy Shell plugin that turns the left edge of the focused monitor into a compact, macOS-inspired Stage Manager holding background Hyprland windows. Features dynamic aspect-ratio cards, true multi-effect rounded corner masking, hardware-accelerated translucent blur, and per-app stacked cards.
 
-![OmaStage](docs/screenshot.png)
+![OmaStage](preview.png)
 
 ## Features
 
